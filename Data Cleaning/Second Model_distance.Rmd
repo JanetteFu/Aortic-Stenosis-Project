@@ -1,0 +1,168 @@
+---
+title: "second_model_distance"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Distance between patient and center. 
+#### 1. Import postal codes.  
+Not sure when Sherbrooke started to offer TAVI  
+```{r}
+post_lat <- read.csv("CanadianPostalCodes202108.csv")
+center_lat <- data.frame(cbind(c("Sacré-Cœur","MUHC","Quebec-Heart","Sherbrooke-Hospital","Heart-Institute","CHUM"),c("H4J 1C5","H4A 3J1","G1V 4G5","J1H 5H3","H1T 1C8","H2X 3E4"),c(45.5341,45.2818,46.7802,45.4431,45.5754,45.5112),c(-73.7162,-73.3611,-71.3007,-71.8633,-73.5782,-73.5578)))
+colnames(center_lat) <- c("Hospital","Code","Lat","Long")
+```
+
+```{r}
+head(post_lat)
+library(dplyr)
+
+post_lat <- post_lat %>% mutate(three_dts = substr(POSTAL_CODE,1,3))
+post_digits <- post_lat %>% select(three_dts,LATITUDE,LONGITUDE) %>% group_by(three_dts) %>% mutate(max_lat = max(LATITUDE),min_lat = min(LATITUDE),max_long = max(LONGITUDE),min_long = min(LONGITUDE)) %>% select(three_dts,max_lat,min_lat,max_long,min_long)
+
+head(post_digits)
+
+post_digits <- post_digits %>% distinct()
+post_digits <- post_digits %>% mutate(mean_lat = 0.5*(max_lat + min_lat),mean_long = 0.5*(max_long + min_long))
+```
+
+```{r}
+model_post_digits %>% filter(three_dts == "H2X")
+```
+
+```{r}
+model_data <- read.csv("first_model_thesis.csv")
+head(model_data)
+model_data_cp <- unique(model_data$cp)
+
+model_post_digits <- post_digits %>% filter(three_dts %in% model_data_cp)
+```
+
+#### 2. calculate the distance between patient and centers. 
+```{r}
+center_distance <- function(lat1,lon1,lat2,lon2) {
+  R = 6371; 
+  dLat = deg2rad(lat2-lat1);
+  dLon = deg2rad(lon2-lon1); 
+  a = 
+    sin(dLat/2) * sin(dLat/2) +
+    cos(deg2rad(lat1)) * cos(deg2rad(lat2)) * 
+    sin(dLon/2) * sin(dLon/2)
+    ; 
+  c = 2 * atan2(sqrt(a), sqrt(1-a)); 
+  d = R * c; 
+  return(d)
+}
+
+deg2rad <- function(deg) {
+  return(deg*(pi/180))
+}
+```
+
+The first three hospitals are very close, so I will compute the distance between the patient and the second one (Sacré-Cœur). 
+```{r}
+temp_distance <- matrix(nrow=409,ncol=5)
+temp_distance[,1] <- model_post_digits$three_dts
+
+center_lat$Lat <- as.numeric(center_lat$Lat)
+center_lat$Long <- as.numeric(center_lat$Long)
+
+for(i in 1:409){
+  for(j in 1:4){
+  temp_distance[i,(j+1)] <- round( center_distance(model_post_digits$mean_lat[i],model_post_digits$mean_long[i],center_lat$Lat[j],center_lat$Long[j]),digits=3)
+  }
+}
+```
+
+```{r}
+head(temp_distance)
+colnames(temp_distance) <- c("cp","To-Sacré-Cœur","To-MUHC","To-Quebec-Heart","To-Sherbrooke-Hospital")
+
+model_data <- merge(model_data,temp_distance,by = "cp", all.x = TRUE)
+```
+
+### prepare the independent variables  
+```{r}
+model_datall <- read.csv("second_model_thesis.csv")
+head(model_datall)
+temp_short <- apply(model_datall[,42:44],1,min)
+model_datall$short_dis <- temp_short
+```
+
+```{r}
+model_datall$sex <- ifelse(model_data_train$sexe == "M",1,0)
+treatment <- model_datall$treatment
+## needs to be corrected here
+model_datall <- model_datall[,c(6,7,33,36,37,40,46,47)]
+```
+
+### add the Sherbrooke center  
+```{r}
+for(i in 1:length(temp_list)){
+  if(model_datall$nam[i] %in% temp_list){
+    model_datall$short_dis[i] = min(model_datall$short_dis[i],model_datall$To.Sherbrooke.Hospital[i])
+  }
+}
+```
+
+### Descriptive on select Variables.  
+```{r}
+library(ggplot2)
+
+model_datall %>% group_by(sex) %>% summarise(prop = sum(treatment)/n())
+# More Female received the TAVI treatment  
+
+model_datall %>% group_by(sex) %>% summarise(age = mean(surg_age),hosp = mean(num_hosp), drug = mean(num_drug), chalson = mean(chalson))
+
+ggplot(data = model_datall) + geom_histogram(aes(surg_age)) + facet_wrap(~sex) + ggtitle("Age by Sex, Male = 1")
+
+ggplot(data = model_datall) + geom_histogram(aes(num_drug)) + facet_wrap(~sex) + ggtitle("Drug by Sex, Male = 1")
+
+ggplot(data = model_datall) + geom_point(aes(x=surg_age, y=num_drug)) + facet_wrap(~sex) + ggtitle("Drug by Age, Male = 1")
+
+ggplot(data = model_datall) + geom_point(aes(x=num_hosp, y=num_drug)) + ggtitle("Hospital vs Durg")
+
+ggplot(data = model_datall) + geom_point(aes(x=surg_age, y=chalson)) + facet_wrap(~sex) +  ggtitle("age vs chalson by sex, Male = 1")
+```
+
+Social Economical Status:  
+0 stands for the least deprived while 5 stands for the most deprived.  
+Looks like the least deprived group has a priority, while the other groups are almost equal  
+```{r}
+model_datall <- model_datall %>% mutate(quintmat = round(mean_quintmat),quintsoc = round(mean_quintsoc))
+
+model_datall %>% group_by(quintmat) %>% summarise(prop = sum(treatment)/n(), age = mean(surg_age),hosp = mean(num_hosp), drug = mean(num_drug), chalson = mean(chalson),count = n())
+
+model_datall %>% group_by(quintsoc) %>% summarise(prop = sum(treatment)/n(), age = mean(surg_age),hosp = mean(num_hosp), drug = mean(num_drug), chalson = mean(chalson),count = n())
+```
+
+### check the correlation between soc and mat status  
+```{r}
+corr <- cor(na.omit(cbind(model_datall$mean_quintmat,model_datall$mean_quintsoc)))
+corr2 <- cor(na.omit(cbind(model_datall$mean_centmat,model_datall$mean_centsoc)))
+
+## the percentage of mat/soc status are more correlated (0.56), while the quantile is very weakly (-0.0042) correlated  
+## thus, including both the quantiles should not cause any collinearity problem 
+```
+
+Find the explanation for how to classify the groups.  
+```{r}
+model_datall %>% group_by(round(mean_quintmat)) %>% count()
+model_datall %>% group_by(round(mean_quintsoc)) %>% count()
+
+model_0_matsoc <- model_datall %>% filter(round(mean_quintsoc) == 0 | round(mean_quintmat) == 0)
+
+model_0_matsoc %>% group_by(region) %>% count()
+model_0_matsoc %>% group_by(cp) %>% count()
+
+nrow(model_0_matsoc)
+```
+
+```{r}
+model_data %>% filter(cp %in% c("J6W","J6T","J6K","J6E","J7C","J7E","J7R")) %>% select(nam,sexe,cp,clsc,mean_quintmat,mean_quintsoc) %>% arrange(cp)
+## patients who lived in the same postal code under the same clsc, have different mat/soc deprivation index  
+# We don't know whether the 0 is caused by typo or has a deeper meaning  
+```

@@ -1,0 +1,198 @@
+---
+title: "Descriptive Data Analysis"
+output: html_document
+---
+### All data in this Rmarkdown are credential, not available for public use
+### All actual numerical summaries written in this file are replaced with _NA_
+#### Find the hospital code
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(haven)
+
+cardiac_data <- read_sas("vacations_a.sas7bdat")
+file_names <- list.files("/home/bhatnagar-lab/lnadeau/ats/")
+
+temp_name <- substr(file_names[1], start = 4, stop = 16)
+
+allkeep_ac_as<- read_sas("data/jf_allkeep_ac_as.sas7bdat")
+```
+
+```{r}
+names(allkeep_ac_as)
+
+head(allkeep_ac_as)
+
+head(second_model_data_trains)
+
+allkeep_ac_as <- allkeep_ac_as %>% filter(nam %in% model_data$nam)
+
+difftime("1960-01-01" , "2013-04-01" , units = c("days"))
+
+temp_data <- allkeep_ac_as %>% filter(dt_fas_interv > 19448)
+temp_list <- temp_data$nam
+```
+
+Summary of "allkeep_ac_as":  
+```{r}
+#every id is unique, 56881 patients
+#we don't need case_a or case_c, because all info are in allkeep
+length(unique(allkeep_ac_as$nam))
+
+# _NA_ principle, _NA_ secondary, _NA_ NAs
+sum(allkeep_ac_as$as_type_diag == "S")
+
+# _NA_ first AS diagnosis date, 17316 first AS intervention date
+length(unique(allkeep_ac_as$nam)) - sum(is.na(allkeep_ac_as$dt_fasdiag_adm))
+length(unique(allkeep_ac_as$nam)) - sum(is.na(allkeep_ac_as$dt_fas_interv))
+
+# _NA_ found AS using method iii, same # in Dt_fas_bill1
+sum(na.omit(allkeep_ac_as$cardiology == 1))
+
+#distribution of age: min: _NA_, max: _NA_, min = _NA_, median = _NA_
+summary(allkeep_ac_as$year_born)
+# _NA_ female, _NA_ male
+sum(allkeep_ac_as$sexe == "M")
+
+# cohort 1: _NA_; cohort 2: _NA_; cohort 3: _NA_; cohort 4: _NA_; cohort 5: _NA_; cohort 6: _NA_
+# volet A: _NA_; volet C: _NA_
+sum(allkeep_ac_as$cohort == 6)
+
+# As_diag: _NA_%, _NA_ patient;  As_interv: _NA_%, _NA_ patient
+# As_bill: _NA_%, _NA_ patient; 
+summary(allkeep_ac_as$as_bill)
+sum(allkeep_ac_as$as_bill == 1)
+```
+
+Death Info:  
+```{r}
+#vacations_a looks like the death info of Volet A new
+death_old_a <- read_sas("data/jf_death_old_a.sas7bdat")
+death_a <- read_sas("data/vacations_a.sas7bdat")
+
+# 12969 death in old_a, good_dod: date of death
+colnames(death_old_a) <- c("nam","date_fas","good_dod")
+
+#_NA_ death in a
+head(death_a)
+
+# The info of death is merged to the "all" file
+allkeep_ac_as <- merge(x = allkeep_ac_as, y = death_old_a, by = "nam", all.x = TRUE)
+head(allkeep_ac_as)
+```
+
+Postal Code:  
+1. Volet A:  
+```{r}
+terr_a <- read_sas("data/jf_terr_clsc_a.sas7bdat")
+
+#clsc: local community service centers
+head(terr_a)
+
+# _NA_ patients, 307208 records
+length(terr_a$nam)
+
+# _NA_ distinct clsc + cp + name, _NA_ unique patients 
+terr_a <- terr_a %>% distinct(nam, clsc, cp, .keep_all = TRUE)
+terr_a <- terr_a[terr_a$cp != "",]
+
+length(unique(terr_a$nam))
+```
+
+2. Volet C:  
+```{r}
+terr_c <- read_sas("data/jf_terr_clsc_c.sas7bdat")
+
+#clsc: local community service centers
+head(terr_c)
+
+# _NA_ patients, _NA_ records
+length(unique(terr_c$nam))
+
+# _NA_ distinct clsc + cp + name, 18480 unique patients 
+terr_c <- terr_c %>% distinct(nam, clsc, cp, .keep_all = TRUE)
+terr_c <- terr_c[terr_c$cp != "",]
+
+length(terr_c$nam)
+```
+
+Deprivation Index:  
+(1) Volet A:  
+```{r}
+index_a <- read_sas("data/jf_ind_def_old_a.sas7bdat")
+head(index_a)
+
+#_NA_ unique patients, _NA_ patients changed their economy status
+index_a <- index_a %>% distinct(nam, cp3, quintmat,quintsoc,centmat,centsoc,base,groupe, .keep_all = TRUE)
+dup_index_a <- index_a %>% filter(nam %in% index_a$nam[duplicated(index_a$nam)])
+dup_index_a <- dup_index_a %>% arrange(nam)
+head(dup_index_a)
+
+#cent: 0 ~ 100; quint: 0 ~ 5; base: 0 ~ 3; group: 0 ~ 6
+```
+
+(2) Volet C:  
+```{r}
+index_c <- read_sas("data/jf_ind_def_c.sas7bdat")
+head(index_c)
+
+#_NA_ unique patients, 20 patients changed their economy status
+index_c <- index_c %>% distinct(nam, cp3, quintmat,quintsoc,centmat,centsoc,base,groupe, .keep_all = TRUE)
+dup_index_c <- index_c %>% filter(nam %in% index_c$nam[duplicated(index_c$nam)])
+dup_index_c <- dup_index_c %>% arrange(nam)
+
+#cent: 0 ~ 100; quint: 0 ~ 5; base: 0 ~ 3; groupe: 0 ~ 6
+# centmat: mean _NA_, 3rd quant _NA_, max = 100
+summary(na.omit(index_c$centmat))
+# centsoc: mean _NA_, 3rd quant _NA_, max = 100
+summary(na.omit(index_c$centsoc))
+```
+
+Physician's Diagnosis:  
+```{r}
+phy_diag_2011a <- read_sas("data/jf_bill_diag_a_2011.sas7bdat")
+head(phy_diag_2011a)
+
+#diag: code of diagnosis
+```
+
+Volet A:  
+```{r}
+me_diag_a <- read_sas("data/jf_me_diag_a.sas7bdat")
+head(me_diag_a)
+
+# 23610 patients, _NA_ unique sequential number of hospital stays
+length(unique(me_diag_a$no_seq))
+
+# Diagnosis type: _NA_ A, _NA_ D, _NA_ P, _NA_
+sum(me_diag_a$type_diag == 'S')
+
+# Characteristics code: _NA_ 0, _NA_ 1, _NA_ 2, _NA_ 3, _NA_ A
+sum(me_diag_a$code_cdiag == "A")
+```
+
+Volet C:  
+```{r}
+me_diag_c <- read_sas("data/jf_me_diag_c.sas7bdat")
+head(me_diag_c)
+
+# 18293 patients, _NA_ unique sequential number of hospital stays
+length(unique(me_diag_c$no_seq))
+
+# Diagnosis type: _NA_ A, _NA_ D, _NA_ P, _NA_ S
+sum(me_diag_c$type_diag == 'A')
+
+# Characteristics code: _NA_ 0, _NA_ 1, _NA_ 2, _NA_ 3, _NA_ A
+sum(me_diag_c$code_cdiag == 0)
+```
+
+```{r}
+bill_a_2011 <- read_sas("jf_bill_a_2011.sas7bdat")
+
+names(bill_a_2011)
+
+head(bill_a_2011)
+```
